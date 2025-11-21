@@ -626,9 +626,20 @@ void setup()
 
     // Load device mode from preferences
     currentMode = load_device_mode();
-    NUM_SETS = (int)currentMode;
+    // Set NUM_SETS based on mode (don't use direct cast, use set_device_mode logic)
+    if (currentMode == MODE_BS14) {
+        NUM_SETS = 1;
+    } else if (currentMode == MODE_BS32) {
+        NUM_SETS = 3;
+    } else if (currentMode == MODE_SUB_48) {
+        NUM_SETS = 1;
+    } else if (currentMode == MODE_SUB_125) {
+        NUM_SETS = 1;
+    } else {
+        NUM_SETS = 1; // Default
+    }
     Serial.printf("[Setup] Starting in %s mode (%d control sets)\n", 
-                 currentMode == MODE_BS14 ? "BS14" : "BS32", NUM_SETS);
+                 get_mode_name(currentMode), NUM_SETS);
 
     Serial.println("Creating UI");
     lvgl_port_lock(-1);
@@ -805,7 +816,9 @@ void create_top_bar() {
 
     // Mode label centered: "Mode: <name>"
     top_bar_mode_label = lv_label_create(top_bar);
-    lv_obj_set_style_text_font(top_bar_mode_label, &lv_font_montserrat_24, 0);
+    // Use smaller font in portrait orientation
+    bool is_portrait_top = lv_obj_get_width(lv_scr_act()) < lv_obj_get_height(lv_scr_act());
+    lv_obj_set_style_text_font(top_bar_mode_label, is_portrait_top ? &lv_font_montserrat_18 : &lv_font_montserrat_24, 0);
     lv_obj_set_style_text_color(top_bar_mode_label, lv_color_hex(0xFFFFFF), 0);
     lv_obj_align(top_bar_mode_label, LV_ALIGN_CENTER, 0, 0);
     char mode_buf[32];
@@ -1109,13 +1122,28 @@ void updateLayout(int rotation) {
         lv_obj_set_style_border_width(set->switch_69, is_bs14 ? 2 : 1, 0);
                 if (is_bs14) {
                     // Now set knob position as the very last step, after all parent alignments
-                    lv_coord_t parent_w = lv_obj_get_width(vertical_switch_container);
-                    lv_coord_t parent_h = lv_obj_get_height(vertical_switch_container);
+                    // Use the same positioning logic as update_button_styles for consistency
+                    // ADJUSTABLE OFFSETS - Modify these values to fine-tune knob position:
+                    lv_coord_t x_offset = 0;        // Horizontal adjustment: positive = right, negative = left
+                    lv_coord_t y_offset_top = 5;    // Vertical adjustment for UP position: positive = down, negative = up
+                    lv_coord_t y_offset_bottom = 5; // Vertical adjustment for DOWN position: positive = down, negative = up
+                    
+                    lv_coord_t vswitch_w = lv_obj_get_width(vertical_switch_container);
+                    lv_coord_t vswitch_h = lv_obj_get_height(vertical_switch_container);
                     lv_coord_t knob_w = 100;
                     lv_coord_t knob_h = 100;
-                    lv_coord_t x = (parent_w - knob_w) / 2 - 10;
-                    lv_coord_t y = (parent_h - knob_h) / 2 - 50;
-                    lv_obj_set_pos(set->switch_69, x, y);
+                    lv_coord_t padding_h = 12; // Padding from container
+                    lv_coord_t available_w = vswitch_w - (padding_h * 2);
+                    lv_coord_t x_pos = padding_h + (available_w - knob_w) / 2 + x_offset; // Centered horizontally + offset
+                    
+                    if (set->switchToggled) {
+                        // Top position: padding + small gap + offset
+                        lv_obj_set_pos(set->switch_69, x_pos, padding_h + y_offset_top);
+                    } else {
+                        // Bottom position: padding from bottom + offset
+                        lv_coord_t available_h = vswitch_h - (padding_h * 2);
+                        lv_obj_set_pos(set->switch_69, x_pos, padding_h + available_h - knob_h - y_offset_bottom);
+                    }
                 }
         lv_obj_set_style_border_color(set->switch_69, lv_color_hex(0x000000), 0);
         lv_obj_clear_flag(set->switch_69, LV_OBJ_FLAG_SCROLLABLE);
@@ -1480,15 +1508,29 @@ void switch_toggled_cb(lv_event_t *e) {
     bool is_bs14_cb = (NUM_SETS == 1);
     
     if (is_bs14_cb) {
-        // BS14: Set knob position as very last step
+        // BS14: Use same positioning logic as update_button_styles for consistency
+        // ADJUSTABLE OFFSETS - Modify these values to fine-tune knob position:
+        lv_coord_t x_offset = 0;        // Horizontal adjustment: positive = right, negative = left
+        lv_coord_t y_offset_top = 5;    // Vertical adjustment for UP position: positive = down, negative = up
+        lv_coord_t y_offset_bottom = 5; // Vertical adjustment for DOWN position: positive = down, negative = up
+        
         lv_obj_t *vertical_switch_container = lv_obj_get_parent(set->switch_69);
+        lv_coord_t vswitch_w = lv_obj_get_width(vertical_switch_container);
+        lv_coord_t vswitch_h = lv_obj_get_height(vertical_switch_container);
         lv_coord_t knob_w = lv_obj_get_width(set->switch_69);
         lv_coord_t knob_h = lv_obj_get_height(set->switch_69);
-        lv_coord_t parent_w = lv_obj_get_width(vertical_switch_container);
-        lv_coord_t parent_h = lv_obj_get_height(vertical_switch_container);
-        lv_coord_t x = (parent_w - knob_w) / 2 - 10;
-        lv_coord_t y = (parent_h - knob_h) / 2 - 50;
-        lv_obj_set_pos(set->switch_69, x, y);
+        lv_coord_t padding_h = 12; // Padding from container
+        lv_coord_t available_w = vswitch_w - (padding_h * 2);
+        lv_coord_t x_pos = padding_h + (available_w - knob_w) / 2 + x_offset; // Centered horizontally + offset
+        
+        if (set->switchToggled) {
+            // Top position: padding + small gap + offset
+            lv_obj_set_pos(set->switch_69, x_pos, padding_h + y_offset_top);
+        } else {
+            // Bottom position: padding from bottom + offset
+            lv_coord_t available_h = vswitch_h - (padding_h * 2);
+            lv_obj_set_pos(set->switch_69, x_pos, padding_h + available_h - knob_h - y_offset_bottom);
+        }
     } else {
         // BS32: Original hardcoded positions
         if (set->switchToggled) {
@@ -1616,6 +1658,11 @@ void update_button_styles(int idx) {
     
     if (is_bs14_ubs) {
         // BS14: Use same positioning logic as toggle callback with proper centering
+        // ADJUSTABLE OFFSETS - Modify these values to fine-tune knob position:
+        lv_coord_t x_offset = 0;        // Horizontal adjustment: positive = right, negative = left
+        lv_coord_t y_offset_top = 5;    // Vertical adjustment for UP position: positive = down, negative = up
+        lv_coord_t y_offset_bottom = 5; // Vertical adjustment for DOWN position: positive = down, negative = up
+        
         lv_obj_t *vertical_switch_container = lv_obj_get_parent(set->switch_69);
         lv_coord_t vswitch_w = lv_obj_get_width(vertical_switch_container);
         lv_coord_t vswitch_h = lv_obj_get_height(vertical_switch_container);
@@ -1625,15 +1672,15 @@ void update_button_styles(int idx) {
         // Center horizontally: account for container padding (12px)
         lv_coord_t padding_h = 12; // Padding from container
         lv_coord_t available_w = vswitch_w - (padding_h * 2);
-        lv_coord_t x_pos = padding_h + (available_w - knob_w) / 2; // Centered horizontally
+        lv_coord_t x_pos = padding_h + (available_w - knob_w) / 2 + x_offset; // Centered horizontally + offset
         
         if (set->switchToggled) {
-            // Top position: padding + small gap
-            lv_obj_set_pos(set->switch_69, x_pos, padding_h + 5); // Centered horizontally, near top
+            // Top position: padding + small gap + offset
+            lv_obj_set_pos(set->switch_69, x_pos, padding_h + y_offset_top);
         } else {
-            // Bottom position: padding from bottom
+            // Bottom position: padding from bottom + offset
             lv_coord_t available_h = vswitch_h - (padding_h * 2);
-            lv_obj_set_pos(set->switch_69, x_pos, padding_h + available_h - knob_h - 5); // Centered horizontally, near bottom
+            lv_obj_set_pos(set->switch_69, x_pos, padding_h + available_h - knob_h - y_offset_bottom);
         }
     } else {
         // BS32: Original hardcoded positions
